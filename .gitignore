@@ -1,0 +1,90 @@
+# ========================
+# VOCI GLOABILI (tue esistenti)
+# ========================
+
+# Miscellaneous
+*.class
+*.log
+*.pyc
+*.swp
+.DS_Store
+.atom/
+.build/
+.buildlog/
+.history
+.svn/
+.swiftpm/
+migrate_working_dir/
+
+# IntelliJ related
+*.iml
+*.ipr
+*.iws
+.idea/
+
+# VS Code settings: commenta se vuoi includere .vscode
+#.vscode/
+
+# ========================
+# FLUTTER / DART / PUB
+# ========================
+
+**/doc/api/
+**/ios/Flutter/.last_build_id
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+/build/
+
+# IL TUO LOCKFILE? in genere si committa, ma puoi escluderlo:
+# pubspec.lock
+
+# ========================
+# ANDROID
+# ========================
+
+# Cartelle Gradle build
+/android/.gradle/
+/android/app/debug/
+/android/app/profile/
+/android/app/release/
+
+# Generated files gradle-wrapper
+**/gradle-wrapper.jar
+**/gradle-wrapper.properties
+
+# ========================
+# iOS
+# ========================
+
+# Pods e Xcode
+ios/Pods/
+/ios/Runner.xcworkspace/
+/ios/Flutter/Generated.xcconfig
+ios/Flutter/ephemeral/
+/ios/Flutter/Flutter.podspec
+ios/Runner/GeneratedPluginRegistrant.*
+/ios/Pods/
+/DerivedData/
+/*.xcuserstate
+
+# ========================
+# SYMBOLS / OBFUSCATION
+# ========================
+
+# Symbolication related
+app.*.symbols
+
+# Obfuscation related
+app.*.map.json
+
+# ========================
+# SEGRETI / VARIABILI d’AMBIENTE
+# ========================
+
+*.keystore
+*.jks
+.env
