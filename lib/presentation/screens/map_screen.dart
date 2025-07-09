@@ -4,6 +4,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:movidapp/presentation/screens/account_page.dart';
 import 'package:movidapp/presentation/screens/new_event_screen.dart';
 
 class MapScreen extends StatefulWidget {
@@ -116,7 +117,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
           CupertinoActionSheetAction(
             onPressed: () {
               Navigator.pop(context);
-              // TODO: Navigate to Account screen
+              Navigator.push(context, MaterialPageRoute(builder: (context) => const AccountPage()));
             },
             child: const Text('Account'),
           ),
@@ -187,7 +188,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                           child: CupertinoSearchTextField(
                             focusNode: _searchFocusNode, // Assign the focus node
                             placeholder: 'Search',
-                            backgroundColor: CupertinoColors.systemGrey5.withOpacity(0.8),
+                            backgroundColor: CupertinoColors.systemGrey5.withOpacity(1.0),
                             onTap: () {
                               _searchFocusNode.requestFocus(); // Request focus explicitly
                             },
