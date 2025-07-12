@@ -1,11 +1,15 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io' show Platform;
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:http/http.dart' as http;
 import 'package:movidapp/presentation/screens/account_page.dart';
 import 'package:movidapp/presentation/screens/new_event_screen.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class MapScreen extends StatefulWidget {
   const MapScreen({super.key});
@@ -14,14 +18,25 @@ class MapScreen extends StatefulWidget {
   State<MapScreen> createState() => _MapScreenState();
 }
 
-class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
+class _MapScreenState extends State<MapScreen> {
   final Completer<GoogleMapController> _controller = Completer();
   Position? _currentPosition;
   final Set<Marker> _markers = {};
 
-  // Animation state
-  Offset? _longPressPosition;
-  late AnimationController _animationController;
+  // --- API Key Management ---
+  final String _placesApiKey = 'AIzaSyDCEdEbmfkTDnkx4OFocZw6CHIKO0L-6Lw';
+
+  String get _apiKey {
+    if (Platform.isAndroid) {
+      return 'AIzaSyCXoTGE6dDpxApC4jsDHhep3-ym9ipCphg'; // Android Key
+    } else if (Platform.isIOS) {
+      return 'AIzaSyCv00ZO1lG2lfyaFFTvXnjdbSBjNXKgMNg'; // iOS Key
+    } else {
+      // Fallback or error case
+      throw UnsupportedError('Platform not supported');
+    }
+  }
+  // ------------------------
 
   // Search field focus
   final FocusNode _searchFocusNode = FocusNode();
@@ -30,16 +45,11 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   void initState() {
     super.initState();
     _determinePosition();
-    _animationController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 500),
-    );
   }
 
   @override
   void dispose() {
-    _animationController.dispose();
-    _searchFocusNode.dispose(); // Dispose the focus node
+    _searchFocusNode.dispose();
     super.dispose();
   }
 
@@ -49,7 +59,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
     serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
-      // TODO: Handle service disabled
       return;
     }
 
@@ -57,13 +66,11 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
       if (permission == LocationPermission.denied) {
-        // TODO: Handle permission denied
         return;
       }
     }
 
     if (permission == LocationPermission.deniedForever) {
-      // TODO: Handle permission permanently denied
       return;
     }
 
@@ -83,29 +90,91 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     ));
   }
 
-  void _onLongPressStart(LongPressStartDetails details) {
+  Future<void> _onMapTapped(LatLng latLng) async {
     setState(() {
-      _longPressPosition = details.localPosition;
+      _markers.clear();
+      _markers.add(Marker(
+        markerId: MarkerId(latLng.toString()),
+        position: latLng,
+      ));
     });
-    _animationController.forward();
+
+    final String placeUrl =
+        'https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${latLng.latitude},${latLng.longitude}&radius=150&key=$_placesApiKey';
+
+    try {
+      final response = await http.get(Uri.parse(placeUrl));
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['status'] == 'OK' && data['results'].isNotEmpty) {
+          _showPlacesListModal(data['results']);
+        } else {
+          _showPlaceInfo('No places found nearby.');
+        }
+      } else {
+        _showPlaceInfo('Network Error: ${response.body}');
+      }
+    } catch (e) {
+      _showPlaceInfo('Error finding places: $e');
+    }
   }
 
-  void _onLongPressEnd(LongPressEndDetails details) async {
-    _animationController.reverse();
-    final GoogleMapController controller = await _controller.future;
-    final LatLng latLng = await controller.getLatLng(
-      ScreenCoordinate(
-        x: details.localPosition.dx.round(),
-        y: details.localPosition.dy.round(),
-      ),
+  void _showPlacesListModal(List<dynamic> places) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) {
+        return DraggableScrollableSheet(
+          expand: false,
+          initialChildSize: 0.5,
+          maxChildSize: 0.9,
+          builder: (_, scrollController) {
+            return Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Text(
+                    'Nearby Places',
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                ),
+                Expanded(
+                  child: ListView.builder(
+                    controller: scrollController,
+                    itemCount: places.length,
+                    itemBuilder: (context, index) {
+                      final place = places[index];
+                      final name = place['name'] ?? 'N/A';
+                      final address = place['vicinity'] ?? 'N/A';
+                      final lat = place['geometry']['location']['lat'];
+                      final lng = place['geometry']['location']['lng'];
+
+                      return ListTile(
+                        title: Text(name),
+                        subtitle: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(address),
+                            const SizedBox(height: 4),
+                            Text('Coords: ${lat.toStringAsFixed(6)}, ${lng.toStringAsFixed(6)}'),
+                          ],
+                        ),
+                        isThreeLine: true,
+                      );
+                    },
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
-    setState(() {
-      _markers.clear(); // No more markers
-      _longPressPosition = null;
-    });
-    await Navigator.push(
-      context,
-      MaterialPageRoute(builder: (context) => NewEventScreen(coordinates: latLng)),
+  }
+
+  void _showPlaceInfo(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
     );
   }
 
@@ -124,7 +193,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
           CupertinoActionSheetAction(
             onPressed: () {
               Navigator.pop(context);
-              // TODO: Navigate to Settings screen
             },
             child: const Text('Settings'),
           ),
@@ -146,39 +214,20 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
           ? const Center(child: CircularProgressIndicator())
           : Stack(
               children: [
-                GestureDetector(
-                  onLongPressStart: _onLongPressStart,
-                  onLongPressEnd: _onLongPressEnd,
-                  child: GoogleMap(
-                    mapType: MapType.normal,
-                    initialCameraPosition: CameraPosition(
-                      target: LatLng(_currentPosition!.latitude, _currentPosition!.longitude),
-                      zoom: 14.5,
-                    ),
-                    onMapCreated: (GoogleMapController controller) {
-                      _controller.complete(controller);
-                    },
-                    markers: _markers,
-                    myLocationEnabled: true,
-                    myLocationButtonEnabled: false, // Using a custom button
+                GoogleMap(
+                  mapType: MapType.normal,
+                  initialCameraPosition: CameraPosition(
+                    target: LatLng(_currentPosition!.latitude, _currentPosition!.longitude),
+                    zoom: 14.5,
                   ),
+                  onMapCreated: (GoogleMapController controller) {
+                    _controller.complete(controller);
+                  },
+                  onTap: _onMapTapped,
+                  markers: _markers,
+                  myLocationEnabled: true,
+                  myLocationButtonEnabled: false,
                 ),
-                if (_longPressPosition != null)
-                  Positioned(
-                    left: _longPressPosition!.dx - 40,
-                    top: _longPressPosition!.dy - 40,
-                    child: ScaleTransition(
-                      scale: Tween<double>(begin: 0.0, end: 1.0).animate(_animationController),
-                      child: Container(
-                        width: 80,
-                        height: 80,
-                        decoration: BoxDecoration(
-                          color: Colors.blue.withOpacity(0.5),
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                    ),
-                  ),
                 SafeArea(
                   child: Padding(
                     padding: const EdgeInsets.all(16.0),
@@ -186,14 +235,14 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                       children: [
                         Expanded(
                           child: CupertinoSearchTextField(
-                            focusNode: _searchFocusNode, // Assign the focus node
+                            focusNode: _searchFocusNode,
                             placeholder: 'Search',
                             backgroundColor: CupertinoColors.systemGrey5.withOpacity(1.0),
                             onTap: () {
-                              _searchFocusNode.requestFocus(); // Request focus explicitly
+                              _searchFocusNode.requestFocus();
                             },
                             onSubmitted: (value) {
-                              _searchFocusNode.unfocus(); // Dismiss keyboard using its own focus node
+                              _searchFocusNode.unfocus();
                             },
                           ),
                         ),
@@ -236,4 +285,3 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     );
   }
 }
-

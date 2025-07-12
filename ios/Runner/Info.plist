@@ -50,6 +50,8 @@
 			<string>comgooglemaps</string>
 			<string>googlechromes</string>
 		</array>
+		<key>NSLocalNetworkUsageDescription</key>
+		<string>Questa app richiede l'accesso alla rete locale per il debugging e per funzionalità di sviluppo.</string>
 		<key>CADisableMinimumFrameDurationOnPhone</key>
 		<true/>
 		<key>UIApplicationSupportsIndirectInputEvents</key>
