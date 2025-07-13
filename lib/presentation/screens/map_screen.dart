@@ -13,7 +13,8 @@ import 'package:movidapp/presentation/screens/new_event_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class MapScreen extends StatefulWidget {
-  const MapScreen({super.key});
+  final Position? initialPosition;
+  const MapScreen({super.key, this.initialPosition});
 
   @override
   State<MapScreen> createState() => _MapScreenState();
@@ -45,39 +46,16 @@ class _MapScreenState extends State<MapScreen> {
   @override
   void initState() {
     super.initState();
-    _determinePosition();
+    _currentPosition = widget.initialPosition;
+    if (_currentPosition != null) {
+      _goToCurrentLocation();
+    }
   }
 
   @override
   void dispose() {
     _searchFocusNode.dispose();
     super.dispose();
-  }
-
-  Future<void> _determinePosition() async {
-    bool serviceEnabled;
-    LocationPermission permission;
-
-    serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) {
-      return;
-    }
-
-    permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.denied) {
-        return;
-      }
-    }
-
-    if (permission == LocationPermission.deniedForever) {
-      return;
-    }
-
-    _currentPosition = await Geolocator.getCurrentPosition();
-    setState(() {});
-    _goToCurrentLocation();
   }
 
   Future<void> _goToCurrentLocation() async {
