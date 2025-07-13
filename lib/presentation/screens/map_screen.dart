@@ -9,8 +9,6 @@ import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:movidapp/data/models/place.dart'; // Added import for Place model
 import 'package:movidapp/presentation/screens/account_page.dart';
-import 'package:movidapp/presentation/screens/new_event_screen.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 class MapScreen extends StatefulWidget {
   final Position? initialPosition;
@@ -27,6 +25,23 @@ class _MapScreenState extends State<MapScreen> {
 
   // --- API Key Management ---
   final String _placesApiKey = 'AIzaSyDCEdEbmfkTDnkx4OFocZw6CHIKO0L-6Lw';
+
+  static const List<String> _defaultPlaceTypes = [
+    'amusement_park',
+    'bar',
+    'cafe',
+    'campground',
+    'casino',
+    'lodging',
+    'night_club',
+    'park',
+    'restaurant',
+    'shopping_mall',
+    'spa',
+    'stadium',
+    'store',
+    'university',
+  ];
 
   String get _apiKey {
     if (Platform.isAndroid) {
@@ -79,7 +94,7 @@ class _MapScreenState extends State<MapScreen> {
     });
 
     final String placeUrl =
-        'https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${latLng.latitude},${latLng.longitude}&radius=150&key=$_placesApiKey';
+        'https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${latLng.latitude},${latLng.longitude}&radius=1000&type=${_defaultPlaceTypes.join('|')}&key=$_placesApiKey';
 
     try {
       final response = await http.get(Uri.parse(placeUrl));
