@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
+import 'package:movidapp/data/models/place.dart'; // Added import for Place model
 import 'package:movidapp/presentation/screens/account_page.dart';
 import 'package:movidapp/presentation/screens/new_event_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -107,7 +108,25 @@ class _MapScreenState extends State<MapScreen> {
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         if (data['status'] == 'OK' && data['results'].isNotEmpty) {
-          _showPlacesListModal(data['results']);
+          List<Place> placesWithPhotos = [];
+          for (var placeData in data['results']) {
+            String? photoUrl;
+            if (placeData['photos'] != null && placeData['photos'].isNotEmpty) {
+              final photoReference = placeData['photos'][0]['photo_reference'];
+              photoUrl = 'https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=$photoReference&key=$_placesApiKey';
+            }
+
+            placesWithPhotos.add(Place(
+              id: placeData['place_id'].hashCode, // Using hashCode as a simple ID for now
+              name: placeData['name'] ?? 'N/A',
+              address: placeData['vicinity'] ?? 'N/A',
+              latitude: placeData['geometry']['location']['lat'],
+              longitude: placeData['geometry']['location']['lng'],
+              eventTypeId: 0, // Placeholder, as eventTypeId is not in nearbysearch response
+              photoUrl: photoUrl,
+            ));
+          }
+          _showPlacesListModal(placesWithPhotos);
         } else {
           _showPlaceInfo('No places found nearby.');
         }
@@ -119,7 +138,7 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
 
-  void _showPlacesListModal(List<dynamic> places) {
+  void _showPlacesListModal(List<Place> places) { // Changed type to List<Place>
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -144,19 +163,34 @@ class _MapScreenState extends State<MapScreen> {
                     itemCount: places.length,
                     itemBuilder: (context, index) {
                       final place = places[index];
-                      final name = place['name'] ?? 'N/A';
-                      final address = place['vicinity'] ?? 'N/A';
-                      final lat = place['geometry']['location']['lat'];
-                      final lng = place['geometry']['location']['lng'];
+                      // Removed old dynamic access
+                      // final name = place['name'] ?? 'N/A';
+                      // final address = place['vicinity'] ?? 'N/A';
+                      // final lat = place['geometry']['location']['lat'];
+                      // final lng = place['geometry']['location']['lng'];
 
                       return ListTile(
-                        title: Text(name),
+                        leading: SizedBox(
+                          width: 50,
+                          height: 50,
+                          child: place.photoUrl != null
+                              ? Image.network(
+                                  place.photoUrl!,
+                                  width: 50,
+                                  height: 50,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (context, error, stackTrace) =>
+                                      const Icon(Icons.image_not_supported),
+                                )
+                              : const Icon(Icons.image_not_supported),
+                        ),
+                        title: Text(place.name),
                         subtitle: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(address),
+                            Text(place.address),
                             const SizedBox(height: 4),
-                            Text('Coords: ${lat.toStringAsFixed(6)}, ${lng.toStringAsFixed(6)}'),
+                            Text('Coords: ${place.latitude.toStringAsFixed(6)}, ${place.longitude.toStringAsFixed(6)}'),
                           ],
                         ),
                         isThreeLine: true,

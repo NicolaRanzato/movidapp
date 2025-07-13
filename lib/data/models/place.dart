@@ -6,6 +6,7 @@ class Place {
   final double latitude;
   final double longitude;
   final int eventTypeId;
+  final String? photoUrl;
 
   Place({
     required this.id,
@@ -14,6 +15,7 @@ class Place {
     required this.latitude,
     required this.longitude,
     required this.eventTypeId,
+    this.photoUrl,
   });
 
   factory Place.fromJson(Map<String, dynamic> json) {
@@ -24,6 +26,7 @@ class Place {
       latitude: json['latitude'],
       longitude: json['longitude'],
       eventTypeId: json['event_type_id'],
+      photoUrl: json['photo_url'],
     );
   }
 
@@ -35,6 +38,7 @@ class Place {
       'latitude': latitude,
       'longitude': longitude,
       'event_type_id': eventTypeId,
+      'photo_url': photoUrl,
     };
   }
 }
