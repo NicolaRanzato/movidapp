@@ -2,6 +2,8 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:movidapp/presentation/screens/map_screen.dart';
+import 'package:geolocator/geolocator.dart'; // Added geolocator import
 
 class AccountPage extends StatefulWidget {
   const AccountPage({super.key});
@@ -63,6 +65,66 @@ class _AccountPageState extends State<AccountPage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Errore: ${e.message}')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  Future<Position> _determinePosition() async {
+    bool serviceEnabled;
+    LocationPermission permission;
+
+    serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      return Future.error('Location services are disabled.');
+    }
+
+    permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) {
+        return Future.error('Location permissions are denied');
+      }
+    }
+
+    if (permission == LocationPermission.deniedForever) {
+      return Future.error(
+          'Location permissions are permanently denied, we cannot request permissions.');
+    }
+
+    return await Geolocator.getCurrentPosition();
+  }
+
+  Future<void> _navigateToMap() async {
+    setState(() {
+      _isLoading = true;
+    });
+    try {
+      final position = await _determinePosition();
+      if (mounted) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) => MapScreen(initialPosition: position),
+          ),
+        );
+      }
+    } catch (e) {
+      print("Error getting location: $e");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Errore nel recupero della posizione: $e')),
+        );
+        // Fallback to MapScreen without initial position or show an error screen
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const MapScreen()),
         );
       }
     } finally {
@@ -136,6 +198,13 @@ class _AccountPageState extends State<AccountPage> {
               style: const TextStyle(fontSize: 18, color: Colors.grey),
             ),
             const SizedBox(height: 30),
+            CupertinoButton.filled(
+              onPressed: _isLoading ? null : _navigateToMap,
+              child: _isLoading
+                  ? const CupertinoActivityIndicator()
+                  : const Text('Vai alla Mappa'),
+            ),
+            const SizedBox(height: 10),
             CupertinoButton.filled(
               onPressed: _isLoading ? null : _signOut,
               child: _isLoading
