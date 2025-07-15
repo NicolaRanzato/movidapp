@@ -26,6 +26,7 @@ class _MapScreenState extends State<MapScreen> {
   // --- API Key Management ---
   final String _placesApiKey = 'AIzaSyDCEdEbmfkTDnkx4OFocZw6CHIKO0L-6Lw';
 
+  /*
   static const List<String> _defaultPlaceTypes = [
     'amusement_park',
     'bar',
@@ -42,6 +43,7 @@ class _MapScreenState extends State<MapScreen> {
     'store',
     'university',
   ];
+  */
 
   String get _apiKey {
     if (Platform.isAndroid) {
@@ -100,7 +102,7 @@ class _MapScreenState extends State<MapScreen> {
       'X-Goog-FieldMask': 'places.displayName,places.formattedAddress,places.types,places.websiteUri,places.photos,places.id,places.location',
     };
     final body = jsonEncode({
-      "includedTypes": _defaultPlaceTypes,
+      // "includedTypes": _defaultPlaceTypes,
       "maxResultCount": 20,
       "rankPreference": "DISTANCE",
       "locationRestriction": {
