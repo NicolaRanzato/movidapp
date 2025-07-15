@@ -1,4 +1,3 @@
-
 class Place {
   final int id;
   final String name;

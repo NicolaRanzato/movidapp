@@ -9,6 +9,8 @@ import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:movidapp/data/models/place.dart'; // Added import for Place model
 import 'package:movidapp/presentation/screens/account_page.dart';
+import 'package:movidapp/presentation/screens/place_details_screen.dart';
+import 'package:movidapp/presentation/screens/place_details_screen.dart';
 
 class MapScreen extends StatefulWidget {
   final Position? initialPosition;
@@ -185,6 +187,14 @@ class _MapScreenState extends State<MapScreen> {
                       // final lng = place['geometry']['location']['lng'];
 
                       return ListTile(
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => PlaceDetailsScreen(place: place),
+                            ),
+                          );
+                        },
                         leading: SizedBox(
                           width: 50,
                           height: 50,
@@ -200,14 +210,7 @@ class _MapScreenState extends State<MapScreen> {
                               : const Icon(Icons.image_not_supported),
                         ),
                         title: Text(place.name),
-                        subtitle: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(place.address),
-                            const SizedBox(height: 4),
-                            Text(place.types.join(', ')),
-                          ],
-                        ),
+                        subtitle: Text(place.address),
                         isThreeLine: true,
                       );
                     },
