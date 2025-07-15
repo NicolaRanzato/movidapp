@@ -7,6 +7,7 @@ class Place {
   final double longitude;
   final int eventTypeId;
   final String? photoUrl;
+  final List<String> types; // Added to store place types
 
   Place({
     required this.id,
@@ -16,6 +17,7 @@ class Place {
     required this.longitude,
     required this.eventTypeId,
     this.photoUrl,
+    this.types = const [], // Default to an empty list
   });
 
   factory Place.fromJson(Map<String, dynamic> json) {

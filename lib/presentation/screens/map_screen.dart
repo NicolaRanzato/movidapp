@@ -93,38 +93,58 @@ class _MapScreenState extends State<MapScreen> {
       ));
     });
 
-    final String placeUrl =
-        'https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${latLng.latitude},${latLng.longitude}&radius=1000&type=${_defaultPlaceTypes.join('|')}&key=$_placesApiKey';
+    const url = 'https://places.googleapis.com/v1/places:searchNearby';
+    final headers = {
+      'Content-Type': 'application/json',
+      'X-Goog-Api-Key': _placesApiKey,
+      'X-Goog-FieldMask': 'places.displayName,places.formattedAddress,places.types,places.websiteUri,places.photos,places.id,places.location',
+    };
+    final body = jsonEncode({
+      "includedTypes": _defaultPlaceTypes,
+      "maxResultCount": 20,
+      "rankPreference": "DISTANCE",
+      "locationRestriction": {
+        "circle": {
+          "center": {
+            "latitude": latLng.latitude,
+            "longitude": latLng.longitude
+          },
+          "radius": 1000.0
+        }
+      }
+    });
 
     try {
-      final response = await http.get(Uri.parse(placeUrl));
+      final response = await http.post(Uri.parse(url), headers: headers, body: body);
+
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        if (data['status'] == 'OK' && data['results'].isNotEmpty) {
-          List<Place> placesWithPhotos = [];
-          for (var placeData in data['results']) {
+        if (data['places'] != null && data['places'].isNotEmpty) {
+          List<Place> places = [];
+          for (var placeData in data['places']) {
             String? photoUrl;
             if (placeData['photos'] != null && placeData['photos'].isNotEmpty) {
-              final photoReference = placeData['photos'][0]['photo_reference'];
-              photoUrl = 'https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=$photoReference&key=$_placesApiKey';
+              final photoName = placeData['photos'][0]['name'];
+              photoUrl = 'https://places.googleapis.com/v1/$photoName/media?maxHeightPx=400&key=$_placesApiKey';
             }
 
-            placesWithPhotos.add(Place(
-              id: placeData['place_id'].hashCode, // Using hashCode as a simple ID for now
-              name: placeData['name'] ?? 'N/A',
-              address: placeData['vicinity'] ?? 'N/A',
-              latitude: placeData['geometry']['location']['lat'],
-              longitude: placeData['geometry']['location']['lng'],
-              eventTypeId: 0, // Placeholder, as eventTypeId is not in nearbysearch response
+            places.add(Place(
+              id: placeData['id'].hashCode,
+              name: placeData['displayName']?['text'] ?? 'N/A',
+              address: placeData['formattedAddress'] ?? 'N/A',
+              latitude: placeData['location']['latitude'],
+              longitude: placeData['location']['longitude'],
+              eventTypeId: 0, // Placeholder
               photoUrl: photoUrl,
+              types: List<String>.from(placeData['types'] ?? []),
             ));
           }
-          _showPlacesListModal(placesWithPhotos);
+          _showPlacesListModal(places);
         } else {
-          _showPlaceInfo('No places found nearby.');
+          _showPlaceInfo('No places found nearby for the selected categories.');
         }
       } else {
-        _showPlaceInfo('Network Error: ${response.body}');
+        _showPlaceInfo('Error fetching places: ${response.body}');
       }
     } catch (e) {
       _showPlaceInfo('Error finding places: $e');
@@ -183,7 +203,7 @@ class _MapScreenState extends State<MapScreen> {
                           children: [
                             Text(place.address),
                             const SizedBox(height: 4),
-                            Text('Coords: ${place.latitude.toStringAsFixed(6)}, ${place.longitude.toStringAsFixed(6)}'),
+                            Text(place.types.join(', ')),
                           ],
                         ),
                         isThreeLine: true,
