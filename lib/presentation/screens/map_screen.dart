@@ -5,8 +5,10 @@ import 'dart:io' show Platform;
 import 'package:custom_map_markers/custom_map_markers.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:geocoding/geocoding.dart' as geocoding;
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:geocoding/geocoding.dart';
 import 'package:http/http.dart' as http;
 import 'package:movidapp/data/models/active_place.dart';
 import 'package:movidapp/data/models/place.dart';
@@ -128,6 +130,33 @@ class _MapScreenState extends State<MapScreen> {
           ? MapType.satellite
           : MapType.normal;
     });
+  }
+
+  Future<void> _searchLocation(String query) async {
+    if (query.isEmpty) {
+      _showPlaceInfo('Please enter a location to search.');
+      return;
+    }
+
+    try {
+      List<Location> locations = await geocoding.locationFromAddress(query);
+
+      if (locations.isNotEmpty) {
+        Location firstLocation = locations.first;
+        final GoogleMapController controller = await _controller.future;
+        controller.moveCamera(CameraUpdate.newCameraPosition(
+          CameraPosition(
+            target: LatLng(firstLocation.latitude, firstLocation.longitude),
+            zoom: 14.5,
+          ),
+        ));
+        _showPlaceInfo('Map moved to ${firstLocation.latitude}, ${firstLocation.longitude}');
+      } else {
+        _showPlaceInfo('No coordinates found for the given address.');
+      }
+    } catch (e) {
+      _showPlaceInfo('Error geocoding address: $e');
+    }
   }
 
   Future<void> _onMapTapped(LatLng latLng) async {
@@ -327,6 +356,7 @@ class _MapScreenState extends State<MapScreen> {
                             },
                             onSubmitted: (value) {
                               _searchFocusNode.unfocus();
+                              _searchLocation(value);
                             },
                           ),
                         ),
