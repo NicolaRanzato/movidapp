@@ -2,15 +2,18 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io' show Platform;
 
+import 'package:custom_map_markers/custom_map_markers.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
-import 'package:movidapp/data/models/place.dart'; // Added import for Place model
+import 'package:movidapp/data/models/active_place.dart';
+import 'package:movidapp/data/models/place.dart';
 import 'package:movidapp/presentation/screens/account_page.dart';
 import 'package:movidapp/presentation/screens/place_details_screen.dart';
-import 'package:movidapp/presentation/screens/place_details_screen.dart';
+import 'package:movidapp/presentation/widgets/pulsating_dot_marker.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class MapScreen extends StatefulWidget {
   final Position? initialPosition;
@@ -23,29 +26,10 @@ class MapScreen extends StatefulWidget {
 class _MapScreenState extends State<MapScreen> {
   final Completer<GoogleMapController> _controller = Completer();
   Position? _currentPosition;
-  final Set<Marker> _markers = {};
+  List<MarkerData> _customMarkers = [];
 
   // --- API Key Management ---
   final String _placesApiKey = 'AIzaSyDCEdEbmfkTDnkx4OFocZw6CHIKO0L-6Lw';
-
-  /*
-  static const List<String> _defaultPlaceTypes = [
-    'amusement_park',
-    'bar',
-    'cafe',
-    'campground',
-    'casino',
-    'lodging',
-    'night_club',
-    'park',
-    'restaurant',
-    'shopping_mall',
-    'spa',
-    'stadium',
-    'store',
-    'university',
-  ];
-  */
 
   String get _apiKey {
     if (Platform.isAndroid) {
@@ -68,6 +52,7 @@ class _MapScreenState extends State<MapScreen> {
     _currentPosition = widget.initialPosition;
     if (_currentPosition != null) {
       _goToCurrentLocation();
+      _fetchAndDisplayActivePlaces();
     }
   }
 
@@ -75,6 +60,54 @@ class _MapScreenState extends State<MapScreen> {
   void dispose() {
     _searchFocusNode.dispose();
     super.dispose();
+  }
+
+  Future<void> _fetchAndDisplayActivePlaces() async {
+    try {
+      final List<dynamic> data = await Supabase.instance.client.rpc('get_active_map_places');
+
+      if (data.isEmpty) {
+        return;
+      }
+
+      final places = data.map((item) => ActivePlace.fromJson(item)).toList();
+      final List<MarkerData> markers = [];
+
+      for (final place in places) {
+        markers.add(
+          MarkerData(
+            marker: Marker(
+              markerId: MarkerId('active_place_${place.placeId}'),
+              position: place.latLng,
+              infoWindow: InfoWindow(
+                title: place.name,
+                snippet: 'Affluence: ${place.affluenceDescription}',
+              ),
+            ),
+            child: PulsatingDotMarker(color: _getMarkerColorForAffluence(place.affluenceId)),
+          ),
+        );
+      }
+
+      setState(() {
+        _customMarkers = markers;
+      });
+    } catch (e) {
+      _showPlaceInfo('Error fetching active places: $e');
+    }
+  }
+
+  Color _getMarkerColorForAffluence(int affluenceId) {
+    switch (affluenceId) {
+      case 1: // low
+        return Colors.yellow;
+      case 2: // medium
+        return Colors.orange;
+      case 3: // high
+        return Colors.red;
+      default:
+        return Colors.blue;
+    }
   }
 
   Future<void> _goToCurrentLocation() async {
@@ -89,14 +122,6 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   Future<void> _onMapTapped(LatLng latLng) async {
-    setState(() {
-      _markers.clear();
-      _markers.add(Marker(
-        markerId: MarkerId(latLng.toString()),
-        position: latLng,
-      ));
-    });
-
     const url = 'https://places.googleapis.com/v1/places:searchNearby';
     final headers = {
       'Content-Type': 'application/json',
@@ -104,7 +129,6 @@ class _MapScreenState extends State<MapScreen> {
       'X-Goog-FieldMask': 'places.displayName,places.formattedAddress,places.types,places.websiteUri,places.photos,places.id,places.location',
     };
     final body = jsonEncode({
-      // "includedTypes": _defaultPlaceTypes,
       "maxResultCount": 20,
       "rankPreference": "DISTANCE",
       "locationRestriction": {
@@ -155,7 +179,7 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
 
-  void _showPlacesListModal(List<Place> places) { // Changed type to List<Place>
+  void _showPlacesListModal(List<Place> places) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -180,12 +204,6 @@ class _MapScreenState extends State<MapScreen> {
                     itemCount: places.length,
                     itemBuilder: (context, index) {
                       final place = places[index];
-                      // Removed old dynamic access
-                      // final name = place['name'] ?? 'N/A';
-                      // final address = place['vicinity'] ?? 'N/A';
-                      // final lat = place['geometry']['location']['lat'];
-                      // final lng = place['geometry']['location']['lng'];
-
                       return ListTile(
                         onTap: () {
                           Navigator.push(
@@ -266,19 +284,24 @@ class _MapScreenState extends State<MapScreen> {
           ? const Center(child: CircularProgressIndicator())
           : Stack(
               children: [
-                GoogleMap(
-                  mapType: MapType.normal,
-                  initialCameraPosition: CameraPosition(
-                    target: LatLng(_currentPosition!.latitude, _currentPosition!.longitude),
-                    zoom: 14.5,
-                  ),
-                  onMapCreated: (GoogleMapController controller) {
-                    _controller.complete(controller);
+                CustomGoogleMapMarkerBuilder(
+                  customMarkers: _customMarkers,
+                  builder: (BuildContext context, Set<Marker>? markers) {
+                    return GoogleMap(
+                      mapType: MapType.normal,
+                      initialCameraPosition: CameraPosition(
+                        target: LatLng(_currentPosition!.latitude, _currentPosition!.longitude),
+                        zoom: 14.5,
+                      ),
+                      onMapCreated: (GoogleMapController controller) {
+                        _controller.complete(controller);
+                      },
+                      onTap: _onMapTapped,
+                      markers: markers ?? {},
+                      myLocationEnabled: true,
+                      myLocationButtonEnabled: false,
+                    );
                   },
-                  onTap: _onMapTapped,
-                  markers: _markers,
-                  myLocationEnabled: true,
-                  myLocationButtonEnabled: false,
                 ),
                 SafeArea(
                   child: Padding(
