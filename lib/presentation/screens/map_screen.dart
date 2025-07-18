@@ -27,6 +27,7 @@ class _MapScreenState extends State<MapScreen> {
   final Completer<GoogleMapController> _controller = Completer();
   Position? _currentPosition;
   List<MarkerData> _customMarkers = [];
+  MapType _currentMapType = MapType.normal;
 
   // --- API Key Management ---
   final String _placesApiKey = 'AIzaSyDCEdEbmfkTDnkx4OFocZw6CHIKO0L-6Lw';
@@ -119,6 +120,14 @@ class _MapScreenState extends State<MapScreen> {
         zoom: 14.5,
       ),
     ));
+  }
+
+  void _toggleMapType() {
+    setState(() {
+      _currentMapType = _currentMapType == MapType.normal
+          ? MapType.satellite
+          : MapType.normal;
+    });
   }
 
   Future<void> _onMapTapped(LatLng latLng) async {
@@ -288,7 +297,7 @@ class _MapScreenState extends State<MapScreen> {
                   customMarkers: _customMarkers,
                   builder: (BuildContext context, Set<Marker>? markers) {
                     return GoogleMap(
-                      mapType: MapType.normal,
+                      mapType: _currentMapType,
                       initialCameraPosition: CameraPosition(
                         target: LatLng(_currentPosition!.latitude, _currentPosition!.longitude),
                         zoom: 14.5,
@@ -345,14 +354,34 @@ class _MapScreenState extends State<MapScreen> {
                 ),
               ],
             ),
-      floatingActionButton: CupertinoButton.filled(
-        onPressed: _goToCurrentLocation,
-        child: const Row(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            Icon(CupertinoIcons.location_solid),
-            SizedBox(width: 8.0),
-            Text('My Location'),
+      floatingActionButton: Padding(
+        padding: const EdgeInsets.only(bottom: 16.0),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CupertinoButton.filled(
+              onPressed: _goToCurrentLocation,
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  Icon(CupertinoIcons.location_solid),
+                  SizedBox(width: 8.0),
+                  Text('My Location'),
+                ],
+              ),
+            ),
+            const SizedBox(width: 10),
+            CupertinoButton.filled(
+              onPressed: _toggleMapType,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  Icon(_currentMapType == MapType.normal ? CupertinoIcons.globe : CupertinoIcons.map),
+                  SizedBox(width: 8.0),
+                  Text(_currentMapType == MapType.normal ? 'Satellite' : 'Normal'),
+                ],
+              ),
+            ),
           ],
         ),
       ),
