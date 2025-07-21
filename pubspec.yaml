@@ -19,6 +19,7 @@ dependencies:
   url_launcher: ^6.3.2
   custom_map_markers: ^0.0.2+1
   geocoding: ^2.2.1
+  intl: ^0.18.1
 
 dev_dependencies:
   flutter_test:

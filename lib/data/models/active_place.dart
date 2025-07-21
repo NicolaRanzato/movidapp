@@ -9,6 +9,7 @@ class ActivePlace {
   final double longitude;
   final int affluenceId;
   final String affluenceDescription;
+  final DateTime timestamp;
 
   ActivePlace({
     required this.placeId,
@@ -18,6 +19,7 @@ class ActivePlace {
     required this.longitude,
     required this.affluenceId,
     required this.affluenceDescription,
+    required this.timestamp,
   });
 
   factory ActivePlace.fromJson(Map<String, dynamic> json) {
@@ -29,6 +31,7 @@ class ActivePlace {
       longitude: json['longitude'].toDouble(),
       affluenceId: json['affluence_id'],
       affluenceDescription: json['affluence_description'],
+      timestamp: DateTime.parse(json['timestamp']),
     );
   }
 

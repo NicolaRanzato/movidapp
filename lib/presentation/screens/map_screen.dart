@@ -9,11 +9,10 @@ import 'package:geocoding/geocoding.dart' as geocoding;
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
-import 'package:http/http.dart' as http;
 import 'package:movidapp/data/models/active_place.dart';
+import 'package:movidapp/data/models/event_type.dart';
 import 'package:movidapp/data/models/place.dart';
 import 'package:movidapp/presentation/screens/account_page.dart';
-import 'package:movidapp/presentation/screens/place_details_screen.dart';
 import 'package:movidapp/presentation/widgets/pulsating_dot_marker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -31,21 +30,6 @@ class _MapScreenState extends State<MapScreen> {
   List<MarkerData> _customMarkers = [];
   MapType _currentMapType = MapType.normal;
 
-  // --- API Key Management ---
-  final String _placesApiKey = 'AIzaSyDCEdEbmfkTDnkx4OFocZw6CHIKO0L-6Lw';
-
-  String get _apiKey {
-    if (Platform.isAndroid) {
-      return 'AIzaSyCXoTGE6dDpxApC4jsDHhep3-ym9ipCphg'; // Android Key
-    } else if (Platform.isIOS) {
-      return 'AIzaSyCv00ZO1lG2lfyaFFTvXnjdbSBjNXKgMNg'; // iOS Key
-    } else {
-      // Fallback or error case
-      throw UnsupportedError('Platform not supported');
-    }
-  }
-  // ------------------------
-
   // Search field focus
   final FocusNode _searchFocusNode = FocusNode();
 
@@ -55,7 +39,7 @@ class _MapScreenState extends State<MapScreen> {
     _currentPosition = widget.initialPosition;
     if (_currentPosition != null) {
       _goToCurrentLocation();
-      _fetchAndDisplayActivePlaces();
+      _refreshMapMarkers();
     }
   }
 
@@ -65,38 +49,58 @@ class _MapScreenState extends State<MapScreen> {
     super.dispose();
   }
 
-  Future<void> _fetchAndDisplayActivePlaces() async {
+  Future<void> _refreshMapMarkers() async {
     try {
-      final List<dynamic> data = await Supabase.instance.client.rpc('get_active_map_places');
+      // Fetch active and all places in parallel
+      final results = await Future.wait([
+        Supabase.instance.client.rpc('get_active_map_places'),
+        Supabase.instance.client.from('place').select(),
+      ]);
 
-      if (data.isEmpty) {
-        return;
-      }
+      final activePlacesData = results[0] as List<dynamic>;
+      final allPlacesData = results[1] as List<dynamic>;
 
-      final places = data.map((item) => ActivePlace.fromJson(item)).toList();
+      final activePlaces = activePlacesData.map((item) => ActivePlace.fromJson(item)).toList();
+      final allPlaces = allPlacesData.map((item) => Place.fromJson(item)).toList();
+
+      final Set<int> activePlaceIds = activePlaces.map((p) => p.placeId).toSet();
       final List<MarkerData> markers = [];
 
-      for (final place in places) {
+      // Create markers for active places (pulsating dots)
+      for (final activePlace in activePlaces) {
         markers.add(
           MarkerData(
             marker: Marker(
-              markerId: MarkerId('active_place_${place.placeId}'),
-              position: place.latLng,
-              infoWindow: InfoWindow(
-                title: place.name,
-                snippet: 'Affluence: ${place.affluenceDescription}',
-              ),
+              markerId: MarkerId('active_place_${activePlace.placeId}'),
+              position: activePlace.latLng,
+              onTap: () => _showSignalDetailsModal(activePlace),
             ),
-            child: PulsatingDotMarker(color: _getMarkerColorForAffluence(place.affluenceId)),
+            child: PulsatingDotMarker(color: _getMarkerColorForAffluence(activePlace.affluenceId)),
           ),
         );
+      }
+
+      // Create markers for inactive places (standard icons)
+      for (final place in allPlaces) {
+        if (!activePlaceIds.contains(place.id)) {
+          markers.add(
+            MarkerData(
+              marker: Marker(
+                markerId: MarkerId('place_${place.id}'),
+                position: LatLng(place.latitude, place.longitude),
+                onTap: () => _showPlaceDetailsModal(place),
+              ),
+              child: const Icon(Icons.location_pin, color: Colors.grey, size: 40),
+            ),
+          );
+        }
       }
 
       setState(() {
         _customMarkers = markers;
       });
     } catch (e) {
-      _showPlaceInfo('Error fetching active places: $e');
+      _showInfo('Error refreshing map markers: $e');
     }
   }
 
@@ -134,7 +138,7 @@ class _MapScreenState extends State<MapScreen> {
 
   Future<void> _searchLocation(String query) async {
     if (query.isEmpty) {
-      _showPlaceInfo('Please enter a location to search.');
+      _showInfo('Please enter a location to search.');
       return;
     }
 
@@ -150,129 +154,135 @@ class _MapScreenState extends State<MapScreen> {
             zoom: 14.5,
           ),
         ));
-        _showPlaceInfo('Map moved to ${firstLocation.latitude}, ${firstLocation.longitude}');
+        _showInfo('Map moved to ${firstLocation.latitude}, ${firstLocation.longitude}');
       } else {
-        _showPlaceInfo('No coordinates found for the given address.');
+        _showInfo('No coordinates found for the given address.');
       }
     } catch (e) {
-      _showPlaceInfo('Error geocoding address: $e');
+      _showInfo('Error geocoding address: $e');
     }
   }
 
-  Future<void> _onMapTapped(LatLng latLng) async {
-    const url = 'https://places.googleapis.com/v1/places:searchNearby';
-    final headers = {
-      'Content-Type': 'application/json',
-      'X-Goog-Api-Key': _placesApiKey,
-      'X-Goog-FieldMask': 'places.displayName,places.formattedAddress,places.types,places.websiteUri,places.photos,places.id,places.location',
-    };
-    final body = jsonEncode({
-      "maxResultCount": 20,
-      "rankPreference": "DISTANCE",
-      "locationRestriction": {
-        "circle": {
-          "center": {
-            "latitude": latLng.latitude,
-            "longitude": latLng.longitude
-          },
-          "radius": 1000.0
-        }
-      }
-    });
-
+  Future<void> _onMapLongPress(LatLng latLng) async {
     try {
-      final response = await http.post(Uri.parse(url), headers: headers, body: body);
+      // 1. Reverse Geocoding
+      final placemarks = await geocoding.placemarkFromCoordinates(latLng.latitude, latLng.longitude);
+      final address = placemarks.isNotEmpty ? placemarks.first.street : 'Unknown address';
 
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        if (data['places'] != null && data['places'].isNotEmpty) {
-          List<Place> places = [];
-          for (var placeData in data['places']) {
-            String? photoUrl;
-            if (placeData['photos'] != null && placeData['photos'].isNotEmpty) {
-              final photoName = placeData['photos'][0]['name'];
-              photoUrl = 'https://places.googleapis.com/v1/$photoName/media?maxHeightPx=400&key=$_placesApiKey';
-            }
+      // 2. Fetch Event Types from Supabase
+      final response = await Supabase.instance.client.from('event_type').select();
+      final eventTypes = (response as List).map((e) => EventType.fromJson(e)).toList();
 
-            places.add(Place(
-              id: placeData['id'].hashCode,
-              name: placeData['displayName']?['text'] ?? 'N/A',
-              address: placeData['formattedAddress'] ?? 'N/A',
-              latitude: placeData['location']['latitude'],
-              longitude: placeData['location']['longitude'],
-              eventTypeId: 0, // Placeholder
-              photoUrl: photoUrl,
-              types: List<String>.from(placeData['types'] ?? []),
-            ));
-          }
-          _showPlacesListModal(places);
-        } else {
-          _showPlaceInfo('No places found nearby for the selected categories.');
-        }
-      } else {
-        _showPlaceInfo('Error fetching places: ${response.body}');
-      }
+      // 3. Show Modal
+      _showCreatePlaceModal(latLng, address ?? "Unknown address", eventTypes);
+
     } catch (e) {
-      _showPlaceInfo('Error finding places: $e');
+      _showInfo('Error during reverse geocoding: $e');
     }
   }
 
-  void _showPlacesListModal(List<Place> places) {
+  void _showSignalDetailsModal(ActivePlace activePlace) {
+    showModalBottomSheet(
+      context: context,
+      builder: (context) {
+        return Container(
+          padding: const EdgeInsets.all(20.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(activePlace.name, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  const Text('Current Affluence: ', style: TextStyle(fontSize: 16)),
+                  Text(
+                    activePlace.affluenceDescription,
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: _getMarkerColorForAffluence(activePlace.affluenceId),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text('Last report at: ${activePlace.timestamp}', style: const TextStyle(fontSize: 14, color: Colors.grey)),
+              const SizedBox(height: 20),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _showPlaceDetailsModal(Place place) {
+    double affluence = 1; // Default to low
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       builder: (context) {
-        return DraggableScrollableSheet(
-          expand: false,
-          initialChildSize: 0.5,
-          maxChildSize: 0.9,
-          builder: (_, scrollController) {
-            return Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Text(
-                    'Nearby Places',
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
-                ),
-                Expanded(
-                  child: ListView.builder(
-                    controller: scrollController,
-                    itemCount: places.length,
-                    itemBuilder: (context, index) {
-                      final place = places[index];
-                      return ListTile(
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => PlaceDetailsScreen(place: place),
-                            ),
-                          );
+        return StatefulBuilder(
+          builder: (BuildContext context, StateSetter setModalState) {
+            return Padding(
+              padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+              child: Container(
+                padding: const EdgeInsets.all(20.0),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(place.name, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 8),
+                    Text(place.address, style: const TextStyle(fontSize: 16, color: Colors.grey)),
+                    const SizedBox(height: 24),
+                    const Text('Report Affluence', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
+                    Slider(
+                      value: affluence,
+                      min: 1,
+                      max: 3,
+                      divisions: 2,
+                      label: affluence == 1 ? 'Low' : affluence == 2 ? 'Medium' : 'High',
+                      onChanged: (value) {
+                        setModalState(() {
+                          affluence = value;
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 20),
+                    SizedBox(
+                      width: double.infinity,
+                      child: CupertinoButton.filled(
+                        child: const Text('Submit Report'),
+                        onPressed: () async {
+                          try {
+                            final user = Supabase.instance.client.auth.currentUser;
+                            if (user == null) {
+                              _showInfo('You must be logged in to report.');
+                              return;
+                            }
+
+                            await Supabase.instance.client.from('signal').insert({
+                              'place_id': place.id,
+                              'affluence_id': affluence.round(),
+                              'user': user.id, // Using user.id as per schema
+                            });
+
+                            Navigator.pop(context); // Close modal
+                            _showInfo('Report submitted successfully!');
+                            _refreshMapMarkers(); // Refresh map to show the new active place
+
+                          } catch (e) {
+                            Navigator.pop(context);
+                            _showInfo('Error submitting report: $e');
+                          }
                         },
-                        leading: SizedBox(
-                          width: 50,
-                          height: 50,
-                          child: place.photoUrl != null
-                              ? Image.network(
-                                  place.photoUrl!,
-                                  width: 50,
-                                  height: 50,
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (context, error, stackTrace) =>
-                                      const Icon(Icons.image_not_supported),
-                                )
-                              : const Icon(Icons.image_not_supported),
-                        ),
-                        title: Text(place.name),
-                        subtitle: Text(place.address),
-                        isThreeLine: true,
-                      );
-                    },
-                  ),
+                      ),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             );
           },
         );
@@ -280,7 +290,92 @@ class _MapScreenState extends State<MapScreen> {
     );
   }
 
-  void _showPlaceInfo(String message) {
+  void _showCreatePlaceModal(LatLng latLng, String address, List<EventType> eventTypes) {
+    final nameController = TextEditingController();
+    EventType? selectedEventType = eventTypes.isNotEmpty ? eventTypes.first : null;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (BuildContext context, StateSetter setModalState) {
+            return Padding(
+              padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+              child: Container(
+                padding: const EdgeInsets.all(20.0),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Create New Place', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: nameController,
+                      decoration: const InputDecoration(labelText: 'Place Name'),
+                    ),
+                    const SizedBox(height: 16),
+                    DropdownButtonFormField<EventType>(
+                      value: selectedEventType,
+                      items: eventTypes.map((type) {
+                        return DropdownMenuItem<EventType>(
+                          value: type,
+                          child: Text(type.description),
+                        );
+                      }).toList(),
+                      onChanged: (value) {
+                        setModalState(() {
+                          selectedEventType = value;
+                        });
+                      },
+                      decoration: const InputDecoration(labelText: 'Category'),
+                    ),
+                    const SizedBox(height: 24),
+                    SizedBox(
+                      width: double.infinity,
+                      child: CupertinoButton.filled(
+                        child: const Text('Create Place'),
+                        onPressed: () async {
+                          if (nameController.text.isEmpty || selectedEventType == null) {
+                            _showInfo('Please fill all fields.');
+                            return;
+                          }
+                          
+                          try {
+                            // Insert into place table
+                            await Supabase.instance.client.from('place').insert({
+                              'name': nameController.text,
+                              'address': address,
+                              'latitude': latLng.latitude,
+                              'longitude': latLng.longitude,
+                              'event_type_id': selectedEventType!.id,
+                            });
+
+                            Navigator.pop(context); // Close modal
+                            _showInfo('Place created successfully!');
+                            // We should refresh all places here, not just active ones
+                            // This will be implemented in the next step.
+                            _refreshMapMarkers(); // Placeholder refresh
+
+                          } catch (e) {
+                            Navigator.pop(context);
+                            _showInfo('Error creating place: $e');
+                          }
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+
+  void _showInfo(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message)),
     );
@@ -334,7 +429,7 @@ class _MapScreenState extends State<MapScreen> {
                       onMapCreated: (GoogleMapController controller) {
                         _controller.complete(controller);
                       },
-                      onTap: _onMapTapped,
+                      onLongPress: _onMapLongPress,
                       markers: markers ?? {},
                       myLocationEnabled: true,
                       myLocationButtonEnabled: false,
